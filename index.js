@@ -4,6 +4,7 @@ const fs = require('fs');
 const dimensions = require('./dimensions');
 const config = require('./config');
 const util = require('./util');
+const mysql_query = require('./mysql_query');
 
 //x10相关目录
 const x10 = config.x10;
@@ -86,16 +87,28 @@ async function main(style_name, template_name, id, multi_row = false, index = 0)
     util.copydir(style_dir + x10.decorate_folder, template_path + my.decorate_folder);
 
     console.log('转化模板文件：' + x10.template_file);
-    new_json = convert_style_json(style_dir + x10.template_file);
+    new_json = await convert_style_json(style_dir + x10.template_file);
     fs.writeFileSync(template_path + my.template_file, JSON.stringify(new_json));
 
     console.log('解析结束');
 }
 
-function convert_style_json(file_path) {
+async function convert_style_json(file_path) {
     let json = JSON.parse(fs.readFileSync(file_path).toString());
     let new_json = create_empty_book(global.style);
+
+    //----------------------------------------規格---------------------------------------
+    console.log('解析模板文件的规格');
+    let sql = 'select * from a3_dimensions where id=?';
+    let rows = await mysql_query(sql, new_json.dimension_id);
+    if(rows.length == 1){
+        new_json.dimension = rows[0];
+    }else{
+        throw('解析出錯，未获取到规格');
+    }
+
     //----------------------------------------封面---------------------------------------
+    console.log('解析模板文件的封面');
     let outer_pages = json.template.style.album.outer_pages.page;
     for (let i in outer_pages) {
         let outer_page = outer_pages[i];
@@ -104,6 +117,7 @@ function convert_style_json(file_path) {
     }
 
     //----------------------------------------内页---------------------------------------
+    console.log('解析模板文件的内页');
     let inner_pages = json.template.style.album.inner_pages.page;
     for (let i in inner_pages) {
         let inner_page = inner_pages[i];
@@ -124,7 +138,7 @@ function convert_layout_json(layout_file) {
 
 function convert_page(x10_page, page_type) {
     let page = create_empty_page();
-    page.page_type = page_type;
+    page.type = page_type;
     //背景图层
     let url_replace = 'com://' + global.style.style_path;
     page.background.image = x10_page.background.background_layer.image.property.url
@@ -282,7 +296,7 @@ function create_empty_book(style) {
 function create_empty_page() {
     return {
         id: 0,
-        page_type: 0,
+        type: 0,
         group: 0,
         background: {
             image: ''
@@ -296,5 +310,6 @@ function create_empty_page() {
     };
 }
 
-main('愿得一人心', 'yuandeyirenxin', 1);
+main('愿得一人心', 'yuandeyirenxin', 1)
+.catch(err => console.log(err));
 

@@ -17,9 +17,9 @@ async function main() {
         let id = i + 1,
             name = row.product_name,
             is_cross = row.compose_type == 2 ? 1 : 0,
-            width = Math.round(util.px2mm(row.width, 300)),
-            height = Math.round(util.px2mm(row.height, 300)),
-            bleed = 3,
+            width = Math.round(util.px2mm(row.width, 300)) - config.my.bleed * 2,
+            height = Math.round(util.px2mm(row.height, 300)) - config.my.bleed * 2,
+            bleed = config.my.bleed,
             description = row.description,
             enable = 1,
             sort = id;
