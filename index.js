@@ -63,16 +63,19 @@ async function main(style_name, template_name, id, multi_row = false, index = 0)
 
     console.log('转化布局文件:' + x10.layout_file);
     let new_json = convert_resource_json(style_dir + x10.layout_file, 'layout');
-    fs.writeFileSync(template_path + my.layout_file, JSON.stringify(new_json));
+    // fs.writeFileSync(template_path + my.layout_file, JSON.stringify(new_json));
     console.log('创建布局文件夹');
     fs.mkdirSync(template_path + my.layout_folder);
     console.log('拷贝布局文件夹');
     util.copydirSync(style_dir + x10.layout_folder, template_path + my.layout_folder);
     console.log('转化布局里每一个布局文件');
+    let layouts = [];
     for (let i in new_json) {
         let layout_json = convert_layout_json('.' + new_json[i]);
-        fs.writeFileSync('.' + new_json[i], JSON.stringify(layout_json));
+        layouts.push(layout_json);
+        // fs.writeFileSync('.' + new_json[i], JSON.stringify(layout_json));
     }
+    fs.writeFileSync(template_path + my.layout_file, JSON.stringify(layouts));
 
     console.log('转化背景文件:' + x10.background_file);
     new_json = convert_resource_json(style_dir + x10.background_file, 'background');
@@ -107,21 +110,31 @@ async function convert_style_json(file_path) {
         throw('解析出錯，未获取到规格');
     }
 
+    let pageCount = 0;
+
     //----------------------------------------封面---------------------------------------
     console.log('解析模板文件的封面');
     let outer_pages = json.template.style.album.outer_pages.page;
-    for (let i in outer_pages) {
+    for (let i = 0; i < outer_pages.length; i++) {
+        pageCount++;
+
         let outer_page = outer_pages[i];
-        let page = convert_page(outer_page, 1);
+        let page = convert_page(outer_page, 'cover');
+        page.index = i;
+        page.id = pageCount;
         new_json.pages.push(page);
     }
 
     //----------------------------------------内页---------------------------------------
     console.log('解析模板文件的内页');
     let inner_pages = json.template.style.album.inner_pages.page;
-    for (let i in inner_pages) {
+    for (let i = 0; i < inner_pages.length; i++) {
+        pageCount++;
+
         let inner_page = inner_pages[i];
-        let page = convert_page(inner_page, 2);
+        let page = convert_page(inner_page, 'inner');
+        page.index = i;
+        page.id = pageCount;
         new_json.pages.push(page);
     }
 
@@ -129,7 +142,7 @@ async function convert_style_json(file_path) {
 }
 
 function convert_layout_json(layout_file) {
-    let page_type = layout_file.indexOf('cover.json') > -1 ? 1 : 2;
+    let page_type = layout_file.indexOf('cover.json') > -1 ? 'cover' : 'inner';
     //传入的是转化后新模板布局layout.json中的项，需转化为x10里的路径
     let page_json = JSON.parse(fs.readFileSync(layout_file).toString());
     let page = convert_page(page_json, page_type);
@@ -169,7 +182,7 @@ function convert_page(x10_page, page_type) {
         page.elements.push(element);
     }
 
-    page.elements.sort((a, b) => a.sort - b.sort);
+    page.elements.sort((a, b) => a.index - b.index);
 
     return page;
 }
@@ -198,7 +211,7 @@ function convert_element(layer, type, refwidth) {
         fill_opacity: 100,
         display: true,
         fixed: layer.location.fixed == 'false' ? false : true,
-        sort: layer.index
+        index: layer.index
     };
 
     if (type == 'photo' || type == 'decorate') {
@@ -282,6 +295,12 @@ function create_empty_book(style) {
         fascicule: 0,
         fascicule_type: 0,
         other_thickness: 0,
+        // jackets: [],
+        // covers: [],
+        // inners_front: [],
+        // inners: [],
+        // inners_behind: [],
+        // others: [],
         pages: [],
         // pagetypes: []
         show_page_num: 1,
@@ -296,14 +315,13 @@ function create_empty_book(style) {
 function create_empty_page() {
     return {
         id: 0,
-        type: 0,
-        group: 0,
+        type: 'inner',
         background: {
             image: ''
         },
         elements: [],
         is_deleted: 0,
-        sort: 0,
+        index: 0,
         resize: 0,
         resize_width: 0,
         resize_height: 0
