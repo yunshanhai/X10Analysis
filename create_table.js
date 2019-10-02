@@ -12,7 +12,7 @@ async function main() {
     for(let i = 0; i < rows.length; i++){
         let row = rows[i];
         let sql = `insert into a3_dimensions 
-            (id,name,is_cross,width,height,bleed,description,enable,sort) 
+            (id,name,is_cross,width,height,bleed,description,enable,index) 
             values(?,?,?,?,?,?,?,?,?)`;
         let id = i + 1,
             name = row.product_name,
@@ -22,8 +22,8 @@ async function main() {
             bleed = config.my.bleed,
             description = row.description,
             enable = 1,
-            sort = id;
-        let params = [id,name,is_cross,width,height,bleed,description,enable,sort];
+            index = id;
+        let params = [id,name,is_cross,width,height,bleed,description,enable,index];
         let result = await mysql_query(sql, params);
     }
 }
