@@ -328,6 +328,6 @@ function create_empty_page() {
     };
 }
 
-main('愿得一人心', 'yuandeyirenxin', 1)
+main('10寸网球少女', 'wangqiushaonv', 2)
 .catch(err => console.log(err));
 
