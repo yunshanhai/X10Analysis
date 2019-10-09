@@ -276,7 +276,14 @@ function convert_resource_json(file_path, type) {
         url_replace_to = my.web_root + global.template_name + '/' + my.decorate_folder + '/';
     }
     items.forEach(element => {
-        let url = element.url.replace(url_replace, url_replace_to);
+        let url = '';
+        // 兼容com://\\和com:/\\，将com:/\\替换为com://\\
+        if(element.url.indexOf('com://')===-1){
+            url = element.url.replace('com:/', 'com://');
+        }else{
+            url = element.url;
+        }
+        url = url.replace(url_replace, url_replace_to);
         new_json.push(url);
     });
     return new_json;
