@@ -61,17 +61,17 @@ async function main(style_name, template_name, id, multi_row = false, index = 0)
     console.log('创建模板文件夹：' + template_path);
     fs.mkdirSync(template_path);
 
-    console.log('转化布局文件:' + x10.layout_file);
-    let new_json = convert_resource_json(style_dir + x10.layout_file, 'layout');
-    // fs.writeFileSync(template_path + my.layout_file, JSON.stringify(new_json));
     console.log('创建布局文件夹');
     fs.mkdirSync(template_path + my.layout_folder);
     console.log('拷贝布局文件夹');
     util.copydirSync(style_dir + x10.layout_folder, template_path + my.layout_folder);
+    console.log('转化布局文件:' + x10.layout_file);
+    let new_json = convert_resource_json(style_dir + x10.layout_file, 'layout');
+    // fs.writeFileSync(template_path + my.layout_file, JSON.stringify(new_json));
     console.log('转化布局里每一个布局文件');
     let layouts = [];
-    for (let i in new_json) {
-        let layout_json = convert_layout_json('.' + new_json[i]);
+    for (let i = 0; i < new_json.length; i++) {
+        let layout_json = convert_layout_json('.' + new_json[i], i);
         layouts.push(layout_json);
         // fs.writeFileSync('.' + new_json[i], JSON.stringify(layout_json));
     }
@@ -116,36 +116,38 @@ async function convert_style_json(file_path) {
     console.log('解析模板文件的封面');
     let outer_pages = json.template.style.album.outer_pages.page;
     for (let i = 0; i < outer_pages.length; i++) {
-        pageCount++;
-
         let outer_page = outer_pages[i];
         let page = convert_page(outer_page, 'cover');
         page.index = i;
         page.id = pageCount;
         new_json.pages.push(page);
+
+        pageCount++;
     }
 
     //----------------------------------------内页---------------------------------------
     console.log('解析模板文件的内页');
     let inner_pages = json.template.style.album.inner_pages.page;
     for (let i = 0; i < inner_pages.length; i++) {
-        pageCount++;
-
         let inner_page = inner_pages[i];
         let page = convert_page(inner_page, 'inner');
         page.index = i;
         page.id = pageCount;
         new_json.pages.push(page);
+
+        pageCount++;
     }
 
     return new_json;
 }
 
-function convert_layout_json(layout_file) {
+function convert_layout_json(layout_file, index) {
     let page_type = layout_file.indexOf('cover.json') > -1 ? 'cover' : 'inner';
     //传入的是转化后新模板布局layout.json中的项，需转化为x10里的路径
     let page_json = JSON.parse(fs.readFileSync(layout_file).toString());
     let page = convert_page(page_json, page_type);
+    page.id = index
+    page.index = index
     return page;
 }
 
@@ -153,13 +155,12 @@ function convert_page(x10_page, page_type) {
     let page = create_empty_page();
     page.type = page_type;
     //背景图层
-    let url_replace = 'com://' + global.style.style_path;
+    let urlSearch = 'com://' + global.style.style_path + x10.background_folder;
+    let urlReplace = my.web_root + global.template_name + '/' + my.background_folder;
     page.background.image = x10_page.background.background_layer.image.property.url
-        .replace(/\\/g, '/')
-        .replace(/\/\/\//g, '//')
-        .replace(
-            url_replace + x10.background_folder,
-            my.web_root + global.template_name + '/' + my.background_folder);
+    page.background.image = page.background.image.replace(/\\/g, '/')
+    page.background.image = page.background.image.replace(/\/\/\//g, '//')
+    page.background.image = page.background.image.replace(urlSearch, urlReplace);
 
     //装饰
     for (let i in x10_page.contents.decorate_layer) {
@@ -214,22 +215,28 @@ function convert_element(layer, type, refwidth) {
         index: layer.index
     };
 
-    if (type == 'photo' || type == 'decorate') {
+    if (type == 'photo') {
         element.image = {
-            url: '',
+            id: null,
+            url: null, 
+            width: 0,
+            height: 0,
+            flag: null, //横竖图标识，横图：h，竖图：v
+            filetype: null,
+            filename: null,
+            size: 0,
             translate_x: 0,
             translate_y: 0,
             width_scale: 1,
             height_scale: 1
         };
-        if (type == 'decorate') {
-            element.image.url = layer.image.property.url
-                .replace(/\\/g, '/')
-                .replace(/\/\/\//g, '//')
-                .replace(
-                'com://' + global.style.style_path + x10.decorate_folder,
-                my.web_root + global.template_name + '/' + my.decorate_folder);
+    } else if (type === 'decorate') {
+        let oldStr = 'com://' + global.style.style_path + x10.decorate_folder;
+        let newStr = my.web_root + global.template_name + '/' + my.decorate_folder
+        element.image = {
+            url: null
         }
+        element.image.url = layer.image.property.url.replace(/\\/g, '/').replace(/\/\/\//g, '//').replace(oldStr, newStr)
     } else if (type == 'text') {
         element.text = {
             content: layer.property.content,
@@ -263,17 +270,17 @@ function convert_resource_json(file_path, type) {
     let items = json.template.groups.group[0].items.item;
     let new_json = [];
 
-    let url_replace = '';
-    let url_replace_to = '';
+    let urlSearch = '';
+    let urlReplace = '';
     if (type == 'background') {
-        url_replace = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.background_folder + '\\';
-        url_replace_to = my.web_root + global.template_name + '/' + my.background_folder + '/';
+        urlSearch = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.background_folder + '\\';
+        urlReplace = my.web_root + global.template_name + '/' + my.background_folder + '/';
     } else if (type == 'layout') {
-        url_replace = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.layout_folder + '\\';
-        url_replace_to = my.web_root + global.template_name + '/' + my.layout_folder + '/';
+        urlSearch = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.layout_folder + '\\';
+        urlReplace = my.web_root + global.template_name + '/' + my.layout_folder + '/';
     } else if (type == 'decorate') {
-        url_replace = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.decorate_folder + '\\';
-        url_replace_to = my.web_root + global.template_name + '/' + my.decorate_folder + '/';
+        urlSearch = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.decorate_folder + '\\';
+        urlReplace = my.web_root + global.template_name + '/' + my.decorate_folder + '/';
     }
     items.forEach(element => {
         let url = '';
@@ -283,7 +290,7 @@ function convert_resource_json(file_path, type) {
         }else{
             url = element.url;
         }
-        url = url.replace(url_replace, url_replace_to);
+        url = url.replace(urlSearch, urlReplace);
         new_json.push(url);
     });
     return new_json;
@@ -335,6 +342,6 @@ function create_empty_page() {
     };
 }
 
-main('10寸网球少女', 'wangqiushaonv', 2)
-.catch(err => console.log(err));
+// main('愿得一人心', 'yuandeyirenxin', 1).catch(err => console.log(err));
+main('10寸网球少女', 'wangqiushaonv', 2).catch(err => console.log(err));
 
