@@ -11,12 +11,12 @@ async function main() {
 
     for(let i = 0; i < rows.length; i++){
         let row = rows[i];
-        let sql = `insert into a3_dimensions 
+        let sql = `insert into tbl_alb_dimension 
             (id,name,is_cross,width,height,bleed,description,enable,index) 
             values(?,?,?,?,?,?,?,?,?)`;
         let id = i + 1,
             name = row.product_name,
-            is_cross = row.compose_type == 2 ? 1 : 0,
+            is_cross = row.compose_type == 2 ? 1 : 2,
             width = Math.round(util.px2mm(row.width, 300)) - config.my.bleed * 2,
             height = Math.round(util.px2mm(row.height, 300)) - config.my.bleed * 2,
             bleed = config.my.bleed,
