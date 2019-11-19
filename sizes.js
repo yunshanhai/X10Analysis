@@ -8,5 +8,6 @@ module.exports = {
     product_id_21: 7,
     product_id_22: 8,
     product_id_24: 9,
-    product_id_25: 10
+    product_id_25: 10,
+    product_id_35: 11
 }

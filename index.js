@@ -1,7 +1,7 @@
 // import {sqlite} from 'sqlite';
 const sqlite = require('sqlite');
 const fs = require('fs');
-const dimensions = require('./dimensions');
+const sizes = require('./sizes');
 const config = require('./config');
 const util = require('./util');
 const mysql_query = require('./mysql_query');
@@ -81,13 +81,22 @@ async function main(style_name, template_name, id, multi_row = false, index = 0)
     new_json = convert_resource_json(style_dir + x10.background_file, 'background');
     fs.writeFileSync(template_path + my.background_file, JSON.stringify(new_json));
     console.log('拷贝背景文件夹');
-    util.copydir(style_dir + x10.background_folder, template_path + my.background_folder);
+    if(fs.existsSync(style_dir + x10.background_folder)) {
+        util.copydir(style_dir + x10.background_folder, template_path + my.background_folder);
+    }else{
+        console.log('背景文件夹不存在');
+    }
+    
 
     console.log('转化装饰文件:' + x10.decorate_file);
     new_json = convert_resource_json(style_dir + x10.decorate_file, 'decorate');
     fs.writeFileSync(template_path + my.decorate_file, JSON.stringify(new_json));
     console.log('拷贝装饰文件夹');
-    util.copydir(style_dir + x10.decorate_folder, template_path + my.decorate_folder);
+    if(fs.existsSync(style_dir + x10.decorate_folder)) {
+        util.copydir(style_dir + x10.decorate_folder, template_path + my.decorate_folder);
+    }else{
+        console.log('装饰文件夹不存在');
+    }
 
     console.log('转化模板文件：' + x10.template_file);
     new_json = await convert_style_json(style_dir + x10.template_file);
@@ -102,10 +111,11 @@ async function convert_style_json(file_path) {
 
     //----------------------------------------規格---------------------------------------
     console.log('解析模板文件的规格');
-    let sql = 'select * from tbl_alb_dimension where id=?';
-    let rows = await mysql_query(sql, new_json.dimension_id);
+    let sql = 'select * from tbl_alb_template_size where id=?';
+    let rows = await mysql_query(sql, new_json.size_id);
+    let template_size = null;
     if(rows.length == 1){
-        new_json.dimension = rows[0];
+        template_size = rows[0];
     }else{
         throw('解析出錯，未获取到规格');
     }
@@ -126,56 +136,59 @@ async function convert_style_json(file_path) {
 
         pageCount++;
     }
-    // x10里，单页面的封面有4个，需要将封面封底合并为自己的一个封面，封面内页和封底内页放到内页的第一页和最后一页
-    let dimension = new_json.dimension
-    let cover_page = null
-    let cover_ext_width_px = util.mm2px(dimension.cover_ext_width, 300)
-    let cover_ext_height_px = util.mm2px(dimension.cover_ext_height, 300)
 
-    if (dimension.is_cross === 1){
-        // 跨页
-        if (tmp_outer_pages.length !== 1) {
-            throw `此跨页模板的封面共${tmp_outer_pages.length}个，不是1个，需要特殊处理`
-        }
-        cover_page = tmp_outer_pages[0]
-    } else {
-        // 单页
-        if (tmp_outer_pages.length !== 4) {
-            throw `此单页模板的封面共${tmp_outer_pages.length}个，不是4个，需要特殊处理`
-        } else {
-            // todo 目前只简单将封面封底的元素合并，背景图先不处理（背景图作为装饰处理也行）
-            let width_px = util.mm2px(dimension.width + dimension.bleed, 300)
+    // 有封面（台历等模板没有封面）
+    if(tmp_outer_pages.length > 0){
+        // x10里，单页面的封面有4个，需要将封面封底合并为自己的一个封面，封面内页和封底内页放到内页的第一页和最后一页
+        let cover_page = null
 
-            let back_cover = tmp_outer_pages[0];
-            let back_cover_elements_length = back_cover.elements.length
-            let cover = tmp_outer_pages[1];
-            // 将封底和封面的元素合并到一页，合并时要处理封面页的索引和x坐标
-            for(let i = 0; i< cover.elements.length; i++) {
-                let element = cover.elements[i]
-                element.index += back_cover_elements_length
-                element.x += width_px
-                back_cover.elements.push(element)
+        if (template_size.is_cross === 1){
+            // 跨页
+            if (tmp_outer_pages.length !== 1) {
+                throw `此跨页模板的封面共${tmp_outer_pages.length}个，不是1个，需要特殊处理`
             }
-            cover_page = back_cover
-        }
+            cover_page = tmp_outer_pages[0]
+            
+            let halfWidth = template_size.width / 2
+            for(let i = 0; i< cover_page.elements.length; i++) {
+                let element = cover_page.elements[i]
+                if (element.x > halfWidth) {
+                    element.x -= halfWidth
+                    element.position = 'cover'
+                } else {
+                    element.position = 'back'
+                }
+            }
 
-        // 考虑封面扩展宽度对元素坐标的影响
-        for(let i = 0; i < cover_page.elements.length; i++) {
-            let element = cover_page.elements[i]
-            element.x += cover_ext_width_px / 2
-            element.y += cover_ext_height_px / 2
+            // cover_page.elements = elements
+        } else {
+            // 单页
+            if (tmp_outer_pages.length !== 4) {
+                throw `此单页模板的封面共${tmp_outer_pages.length}个，不是4个，需要特殊处理`
+            } else {
+                let back_cover = tmp_outer_pages[0];
+                let cover = tmp_outer_pages[1];
+
+                for(let i = 0; i < back_cover.elements.length; i++) {
+                    back_cover.elements[i].position = 'back'
+                }
+                // 将封底和封面的元素合并到一页，合并时要处理封面页的索引和x坐标
+                for(let i = 0; i< cover.elements.length; i++) {
+                    let element = cover.elements[i]
+                    element.index += back_cover.elements.length
+                    element.position = 'cover'
+                    back_cover.elements.push(element)
+                }
+
+                cover_page = back_cover
+            }
         }
+        pageCount = 1;
+
+        new_json.pages.push(cover_page)
     }
-    // // 考虑封面扩展宽度对元素坐标的影响
-    // for(let i = 0; i < cover_page.elements.length; i++) {
-    //     let element = cover_page.elements[i]
-    //     element.x += cover_ext_width_px / 2
-    //     element.y += cover_ext_height_px / 2
-    // }
-    // 将pageCount改为1页
-    pageCount = 1;
 
-    new_json.pages.push(cover_page)
+    
 
     //----------------------------------------内页---------------------------------------
     console.log('解析模板文件的内页');
@@ -206,13 +219,19 @@ function convert_layout_json(layout_file, index) {
 function convert_page(x10_page, page_type) {
     let page = create_empty_page();
     page.type = page_type;
+    page.position = page_type
     //背景图层
     let urlSearch = 'com://' + global.style.style_path + x10.background_folder;
     let urlReplace = my.web_root + global.template_name + '/' + my.background_folder;
-    page.background.image = x10_page.background.background_layer.image.property.url
-    page.background.image = page.background.image.replace(/\\/g, '/')
-    page.background.image = page.background.image.replace(/\/\/\//g, '//')
-    page.background.image = page.background.image.replace(urlSearch, urlReplace);
+    if(x10_page.hasOwnProperty('background')){
+        page.background.image = x10_page.background.background_layer.image.property.url
+        page.background.image = page.background.image.replace(/\\/g, '/')
+        page.background.image = page.background.image.replace(/\/\/\//g, '//')
+        page.background.image = page.background.image.replace(urlSearch, urlReplace);
+    } else {
+        page.background.image = null
+    }
+    
 
     //装饰
     for (let i in x10_page.contents.decorate_layer) {
@@ -237,9 +256,14 @@ function convert_page(x10_page, page_type) {
 
     page.elements.sort((a, b) => a.index - b.index);
 
+    // // 重新设置index，index从0开始
+    // for(let i = 0; i < page.elements.length; i++) {
+    //     page.elements[i].index = i
+    // }
+
     // 重新设置index，index从0开始
     for(let i = 0; i < page.elements.length; i++) {
-        page.elements[i].index = i
+        delete page.elements[i].index
     }
 
     return page;
@@ -269,7 +293,8 @@ function convert_element(layer, type, refwidth) {
         fill_opacity: 100,
         display: true,
         fixed: layer.location.fixed == 'false' ? false : true,
-        index: layer.index
+        index: layer.index,
+        position: 'default' // 普通页默认default，封面页分五个区，封底为back，封面为cover，书脊为spine，封底折页为back_fold，封面折页为cover_fold
     };
 
     if (type == 'photo') {
@@ -324,8 +349,7 @@ function convert_element(layer, type, refwidth) {
 }
 
 function convert_resource_json(file_path, type) {
-    let json = JSON.parse(fs.readFileSync(file_path).toString());
-    let items = json.template.groups.group[0].items.item;
+    
     let new_json = [];
 
     let urlSearch = '';
@@ -340,17 +364,25 @@ function convert_resource_json(file_path, type) {
         urlSearch = 'com://\\' + global.style.style_path.replace(/\//g, '\\') + x10.decorate_folder + '\\';
         urlReplace = my.web_root + global.template_name + '/' + my.decorate_folder + '/';
     }
-    items.forEach(element => {
-        let url = '';
-        // 兼容com://\\和com:/\\，将com:/\\替换为com://\\
-        if(element.url.indexOf('com://')===-1){
-            url = element.url.replace('com:/', 'com://');
-        }else{
-            url = element.url;
-        }
-        url = url.replace(urlSearch, urlReplace);
-        new_json.push(url);
-    });
+
+    if(fs.existsSync(file_path)){
+        let json = JSON.parse(fs.readFileSync(file_path).toString());
+        let items = json.template.groups.group[0].items.item;
+        items.forEach(element => {
+            let url = '';
+            // 兼容com://\\和com:/\\，将com:/\\替换为com://\\
+            if(element.url.indexOf('com://')===-1){
+                url = element.url.replace('com:/', 'com://');
+            }else{
+                url = element.url;
+            }
+            url = url.replace(urlSearch, urlReplace);
+            new_json.push(url);
+        });
+    }else{
+        console.log('转化' + type + '的文件不存在：' + file_path)
+    }
+    
     return new_json;
 }
 
@@ -362,8 +394,7 @@ function create_empty_book(style) {
         author: '小凡',
         name: style.style_name,
         //规格尺寸id，相当于basebook表
-        dimension_id: dimensions['product_id_' + style.product_id],
-        // dimension: {},
+        size_id: sizes['product_id_' + style.product_id],
         fascicule: 0,
         fascicule_type: 0,
         other_thickness: 0,
@@ -396,7 +427,9 @@ function create_empty_page() {
         sort: 0,
         resize: 0,
         resize_width: 0,
-        resize_height: 0
+        resize_height: 0,
+        version: 1,
+        position: 'inner'
     };
 }
 
@@ -416,6 +449,33 @@ if (process.argv0.length===2){
             break;
         case 4 :
             main('甜蜜女孩', 'tianminvhai', 4).catch(err => console.log(err));
+            break;
+        case 5 :
+            main('爱情进行时', 'aiqingjinxingshi', 5).catch(err => console.log(err));
+            break;
+        case 6 :
+            main('如海绵', 'ruhaimian', 6).catch(err => console.log(err));
+            break;
+        case 7 :
+            main('一朵年华', 'yiduonianhua', 7).catch(err => console.log(err));
+            break;
+        case 8 :
+            main('诗意日常', 'shiyirichang', 8).catch(err => console.log(err));
+            break;
+        case 9 :
+            main('梧叶枫黄', 'wuyefenghuang', 9).catch(err => console.log(err));
+            break;
+        case 10 :
+            main('故事', 'gushi', 10).catch(err => console.log(err));
+            break;
+        case 11 :
+            main('宁静的梦', 'ningjingdemeng', 11).catch(err => console.log(err));
+            break;
+        case 12 :
+            main('寻觅', 'xunmi', 12).catch(err => console.log(err));
+            break;
+        case 13 :
+            main('一夜璀璨', 'yiyecuican', 13).catch(err => console.log(err));
             break;
         default :
             console.log('解析id不存在')
