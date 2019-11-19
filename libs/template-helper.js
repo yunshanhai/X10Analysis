@@ -1,5 +1,6 @@
 const config = require('../config');
 const fs = require('fs');
+const util = require('../util')
 
 exports.create_empty_book = (book_name, size_id) => {
     return {
@@ -91,7 +92,7 @@ exports.convert_element = (layer, type, refwidth, style_path, template_name) => 
             content: layer.property.content,
             mode: layer.property.textModel,//text|label
             properties: {
-                fontSize: px2px(layer.property.size * layer.property.scaleX, 72, 300),
+                fontSize: util.px2px(layer.property.size * layer.property.scaleX, 72, 300),
                 lineHeight: layer.property.lineHeight,
                 fontFamily: layer.property.font,
                 color: layer.property.color,
@@ -102,12 +103,12 @@ exports.convert_element = (layer, type, refwidth, style_path, template_name) => 
             },
             textDecoration: layer.property.underline ? 'underline' : 'none',
             lines: [],
-            drawBox: {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0
-            }
+            // drawBox: {
+            //     x: 0,
+            //     y: 0,
+            //     width: 0,
+            //     height: 0
+            // }
         }
     }
 
