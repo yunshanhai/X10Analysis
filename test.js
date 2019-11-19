@@ -1,7 +1,14 @@
-// const fs = require('fs');
+const templateHelper = require('./libs/template-helper')
+const templates = require('./libs/styles')
 
-// fs.mkdirSync('./templates/yuandeyirenxin/');
+function main () {
+    var a = 1
+    this.$proto
+    m2 ()
+}
 
-let str = 'studio_photo/hudiejingzhuangjiniance12cunshukuan/huakaibubai/';
-str = str.replace(/\//g, '\\\\');
-console.log(str);
+let m2 = () => {
+    console.log(a)
+}
+
+main()
