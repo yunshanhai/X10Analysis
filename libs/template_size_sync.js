@@ -1,9 +1,10 @@
 const mysql = require('mysql');
 const sqlite = require('sqlite');
-const config = require('./config');
-const util = require('./util');
+const config = require('../config');
+const util = require('../util');
+const mysql_query = require('../mysql_query')
 
-let db_mysql = mysql.createPool(config.mysql);
+// let db_mysql = mysql.createPool(config.mysql);
 
 async function main() {
     const db_sqlite = await sqlite.open(config.x10.db);
@@ -31,16 +32,17 @@ async function main() {
     }
 }
 
-function mysql_query(sql, params){
-    return new Promise((resolve, reject)=>{
-        db_mysql.query(sql, params, (err, result)=>{
-        if(err){
-            reject(err);
-        }
-        resolve(result);
-        });
-    });
-}
+// function mysql_query(sql, params){
+//     return new Promise((resolve, reject)=>{
+//         db_mysql.query(sql, params, (err, result)=>{
+//         if(err){
+//             reject(err);
+//         }
+//         resolve(result);
+//         });
+//     });
+// }
 
 main();
 console.log('执行完成');
+return;

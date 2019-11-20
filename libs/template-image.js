@@ -1,34 +1,36 @@
 const fs = require('fs');
-const config = require('./config');
-const styles = require('./libs/styles')
+const config = require('../config');
+const styles = require('./styles')
 
-//转化后相关
-const my = config.my;
+// let id = parseInt(process.argv[2])
 
-const global = {
-    template_name: '',
-    style: null
-}
+// if(styles.hasOwnProperty(id)) {
+//     main(styles[id].name, styles[id].alias, styles[id].id).catch(err => console.log(err));
+// }else {
+//     console.log('解析id不存在')
+// }
 
-let id = parseInt(process.argv[2])
+// async function main(style_name, template_name, id) {
+//     let template_path = config.my.root + template_name + '/';
+//     let background_folder = template_path + config.my.background_folder
+//     let decorate_folder = template_path + config.my.decorate_folder
 
-if(styles.hasOwnProperty(id)) {
-    main(styles[id].name, styles[id].alias, styles[id].id).catch(err => console.log(err));
-}else {
-    console.log('解析id不存在')
-}
+//     // l m t i
+//     copyLostImage(background_folder)
+//     copyLostImage(decorate_folder)
+// }
 
-async function main(style_name, template_name, id) {
-    let template_path = my.root + template_name + '/';
-    let background_folder = template_path + my.background_folder
-    let decorate_folder = template_path + my.decorate_folder
+exports.templateImageCheck = async (template_name) => {
+    let template_path = config.my.root + template_name + '/';
+    let background_folder = template_path + config.my.background_folder
+    let decorate_folder = template_path + config.my.decorate_folder
 
     // l m t i
-    deal(background_folder)
-    deal(decorate_folder)
+    copyLostImage(background_folder)
+    copyLostImage(decorate_folder)
 }
 
-function deal (folder) {
+function copyLostImage (folder) {
     if(fs.existsSync(folder)){
         let allFiles = fs.readdirSync(folder); //同步读取当前目录
         let mainFiles = allFiles.filter(item => item.indexOf('_') === -1)

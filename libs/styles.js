@@ -63,5 +63,15 @@ module.exports = {
         id: 13,
         name: '一夜璀璨',
         alias: 'yiyecuican'
+    },
+    14: {
+        id: 14,
+        name: '团结一心',
+        alias: 'tuanjieyixin'
+    },
+    15: {
+        id: 15,
+        name: '青春回首',
+        alias: 'qingchunhuishou'
     }
 }

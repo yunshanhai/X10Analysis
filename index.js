@@ -7,13 +7,16 @@ const util = require('./util');
 const mysql_query = require('./mysql_query');
 const styles = require('./libs/styles')
 const template_helper = require('./libs/template-helper')
+const template_image = require('./libs/template-image')
 
 //如果查询到多个同名模板名称，需要设置index对应的行索引，并且设置multi_row=true;
 //style_name:x10模板的中文名，template_name:转化为我们的模板的文件夹名，id：模板的id
 //使用模板的中文名查询到多条记录，需要将multi_row设置为true再转换，并且设置要转换哪条数据，使用索引index指定
-async function main(style_name, template_name, id, multi_row = false, index = 0) {
+async function main(style_name, template_name, id, op = null, multi_row = false, index = 0) {
     const db = await sqlite.open(config.x10.db);
-    const rows = await db.all('select * from xc_product_style where style_name=?', style_name);
+    const rows = await db.all(`select a.*,b.* from xc_product_style a 
+        left join xc_product b on a.product_id = b.product_id 
+        where a.style_name=?`, style_name);
     if (rows.length > 1 && !multi_row) {
         console.log(`**查询到多条【${style_name}】，请设置要解析那一条，修改代码multi_row和index`);
         console.log('');
@@ -38,57 +41,104 @@ async function main(style_name, template_name, id, multi_row = false, index = 0)
         return;
     }
 
+    //将模板数据插入tbl_alb_template表
+    if (op === 'a') {
+        let size_id = sizes['product_id_' + style.product_id]
+        let rows = await mysql_query('select id from tbl_alb_template where id = ? ', id);
+
+        let sql = `insert into tbl_alb_template 
+        (id,size_id,name,version,type,description,thumb_url,path,page_count,photo_count,hot_num,is_top,state,sort)
+        values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+        if(rows.length==0) {
+            let type = [3,4,11].includes(size_id) ? 'calendar' : 'album';
+            let path = config.my.web_root + template_name + '/';
+            let rows = await mysql_query(sql, [id,size_id,style_name,1,type,'','', path, style.page,style.filling_photo_count,0,0,1,id])
+        }
+    }
+
     //创建模板文件夹
     let template_path = config.my.root + template_name + '/';
 
-    if (fs.existsSync(template_path)) {
-        console.log('模板文件夹已存在，移除原文件夹：' + template_path);
-        util.rmdir(template_path);
-    }
+    if (op === 'a') {
+        if (fs.existsSync(template_path)) {
+            console.log('模板文件夹已存在，移除原文件夹：' + template_path);
+            util.rmdir(template_path);
+        }
+    
+        console.log('创建模板文件夹：' + template_path);
+        fs.mkdirSync(template_path);
 
-    console.log('创建模板文件夹：' + template_path);
-    fs.mkdirSync(template_path);
+        
+        if(fs.existsSync(style_dir + config.x10.layout_folder)){
+            console.log('创建布局文件夹');
+            fs.mkdirSync(template_path + config.my.layout_folder);
+            console.log('拷贝布局文件夹');
+            util.copydirSync(style_dir + config.x10.layout_folder, template_path + config.my.layout_folder);
+        } else {
+            console.log('布局文件夹不存在')
+        }
+        
 
-    console.log('创建布局文件夹');
-    fs.mkdirSync(template_path + config.my.layout_folder);
-    console.log('拷贝布局文件夹');
-    util.copydirSync(style_dir + config.x10.layout_folder, template_path + config.my.layout_folder);
-    console.log('转化布局文件:' + config.x10.layout_file);
-    let new_json = template_helper.convert_resource_json(style_dir + config.x10.layout_file, 'layout', style.style_path, template_name);
-    // fs.writeFileSync(template_path + config.my.layout_file, JSON.stringify(new_json));
-    console.log('转化布局里每一个布局文件');
-    let layouts = [];
-    for (let i = 0; i < new_json.length; i++) {
-        let layout_json = convert_layout_json('.' + new_json[i], i, style.style_path, template_name);
-        layouts.push(layout_json);
-        // fs.writeFileSync('.' + new_json[i], JSON.stringify(layout_json));
-    }
-    fs.writeFileSync(template_path + config.my.layout_file, JSON.stringify(layouts));
+        console.log('拷贝背景文件夹');
+        if(fs.existsSync(style_dir + config.x10.background_folder)) {
+            util.copydirSync(style_dir + config.x10.background_folder, template_path + config.my.background_folder);
+        }else{
+            console.log('背景文件夹不存在');
+        }
 
-    console.log('转化背景文件:' + config.x10.background_file);
-    new_json = template_helper.convert_resource_json(style_dir + config.x10.background_file, 'background', style.style_path, template_name);
-    fs.writeFileSync(template_path + config.my.background_file, JSON.stringify(new_json));
-    console.log('拷贝背景文件夹');
-    if(fs.existsSync(style_dir + config.x10.background_folder)) {
-        util.copydir(style_dir + config.x10.background_folder, template_path + config.my.background_folder);
-    }else{
-        console.log('背景文件夹不存在');
+        console.log('拷贝装饰文件夹');
+        if(fs.existsSync(style_dir + config.x10.decorate_folder)) {
+            util.copydirSync(style_dir + config.x10.decorate_folder, template_path + config.my.decorate_folder);
+        }else{
+            console.log('装饰文件夹不存在');
+        }
+
+        console.log('处理模板缺少的缩略图（背景、装饰）');
+        template_image.templateImageCheck(template_name)
     }
     
+    if (op == null || op === 'a') {
+        console.log('转化布局文件:' + config.x10.layout_file);
+        let new_json = template_helper.convert_resource_json(style_dir + config.x10.layout_file, 'layout', style.style_path, template_name);
+        console.log('转化布局里每一个布局文件');
+        let layouts = [];
+        for (let i = 0; i < new_json.length; i++) {
+            let layout_json = convert_layout_json('.' + new_json[i], i, style.style_path, template_name);
+            layouts.push(layout_json);
+        }
+        fs.writeFileSync(template_path + config.my.layout_file, JSON.stringify(layouts));
 
-    console.log('转化装饰文件:' + config.x10.decorate_file);
-    new_json = template_helper.convert_resource_json(style_dir + config.x10.decorate_file, 'decorate', style.style_path, template_name);
-    fs.writeFileSync(template_path + config.my.decorate_file, JSON.stringify(new_json));
-    console.log('拷贝装饰文件夹');
-    if(fs.existsSync(style_dir + config.x10.decorate_folder)) {
-        util.copydir(style_dir + config.x10.decorate_folder, template_path + config.my.decorate_folder);
-    }else{
-        console.log('装饰文件夹不存在');
+        console.log('转化模板文件：' + config.x10.template_file);
+        new_json = await convert_style_json(style_dir + config.x10.template_file, style, template_name);
+        fs.writeFileSync(template_path + config.my.template_file, JSON.stringify(new_json));
+
+        if (op == null) {
+            console.log('将文件复制到站点服务目录' + template_name)
+            fs.copyFileSync(template_path + config.my.layout_file, config.my.www_root + template_name + '/' + config.my.layout_file)
+            fs.copyFileSync(template_path + config.my.template_file, config.my.www_root + template_name + '/' + config.my.template_file)
+        }
     }
 
-    console.log('转化模板文件：' + config.x10.template_file);
-    new_json = await convert_style_json(style_dir + config.x10.template_file, style, template_name);
-    fs.writeFileSync(template_path + config.my.template_file, JSON.stringify(new_json));
+    if (op === 'a') {
+        console.log('转化背景文件:' + config.x10.background_file);
+        new_json = template_helper.convert_resource_json(style_dir + config.x10.background_file, 'background', style.style_path, template_name);
+        fs.writeFileSync(template_path + config.my.background_file, JSON.stringify(new_json));
+
+        console.log('转化装饰文件:' + config.x10.decorate_file);
+        new_json = template_helper.convert_resource_json(style_dir + config.x10.decorate_file, 'decorate', style.style_path, template_name);
+        fs.writeFileSync(template_path + config.my.decorate_file, JSON.stringify(new_json));
+    }
+
+    if (op === 'a') {
+        console.log('将整个模板目录复制到站点服务目录' + template_name)
+        let www_path = config.my.www_root + template_name + '/'
+        if (fs.existsSync(www_path)) {
+            console.log('站点模板文件夹已存在，移除原文件夹：' + www_path);
+            util.rmdir(www_path);
+        }
+        console.log('开始拷贝')
+        util.copydirSync(template_path, www_path)
+    }
 
     console.log('解析结束');
 }
@@ -138,14 +188,21 @@ async function convert_style_json(file_path, style, template_name) {
             cover_page = tmp_outer_pages[0]
             
             let halfWidth = template_size.width / 2
+            let myBleed = util.mm2px(config.my.bleed, 300)
             for(let i = 0; i< cover_page.elements.length; i++) {
                 let element = cover_page.elements[i]
                 if (element.x > halfWidth) {
-                    element.x -= halfWidth
                     element.position = 'cover'
+                    element.x -= halfWidth
+                    element.x -= cover_page.cover.spine * 2
                 } else {
                     element.position = 'back'
                 }
+                element.x -= cover_page.cover.bleed
+                element.y -= cover_page.cover.bleed
+
+                element.x += myBleed
+                element.y += myBleed
             }
 
             // cover_page.elements = elements
@@ -173,10 +230,10 @@ async function convert_style_json(file_path, style, template_name) {
         }
         pageCount = 1;
 
+        delete cover_page.cover
+
         new_json.pages.push(cover_page)
     }
-
-    
 
     //----------------------------------------内页---------------------------------------
     console.log('解析模板文件的内页');
@@ -220,34 +277,59 @@ function convert_page(x10_page, page_type, style_path, template_name) {
         page.background.image = null
     }
     
+    /* 元素的转换兼容，x10模板有些元素当单个时，会把数组存成对象 */
 
     //装饰
-    for (let i in x10_page.contents.decorate_layer) {
-        let layer = x10_page.contents.decorate_layer[i];
-        let element = template_helper.convert_element(layer, 'decorate', x10_page.location.refwidth);
+    if (Array.isArray(x10_page.contents.decorate_layer)){
+        for (let i in x10_page.contents.decorate_layer) {
+            let layer = x10_page.contents.decorate_layer[i];
+            let element = template_helper.convert_element(layer, 'decorate', x10_page.location.refwidth, style_path, template_name);
+            page.elements.push(element);
+        }
+    } else {
+        let layer = x10_page.contents.decorate_layer;
+        let element = template_helper.convert_element(layer, 'decorate', x10_page.location.refwidth, style_path, template_name);
         page.elements.push(element);
     }
+    
 
     //照片
-    for (let i in x10_page.contents.photo_layer) {
-        let layer = x10_page.contents.photo_layer[i];
-        let element = template_helper.convert_element(layer, 'photo', x10_page.location.refwidth);
+    if(Array.isArray(x10_page.contents.photo_layer)){
+        for (let i in x10_page.contents.photo_layer) {
+            let layer = x10_page.contents.photo_layer[i];
+            let element = template_helper.convert_element(layer, 'photo', x10_page.location.refwidth, style_path, template_name);
+            page.elements.push(element);
+        }
+    } else {
+        let layer = x10_page.contents.photo_layer;
+        let element = template_helper.convert_element(layer, 'photo', x10_page.location.refwidth, style_path, template_name);
         page.elements.push(element);
     }
+    
 
     //文字
-    for (let i in x10_page.contents.text_layer) {
-        let layer = x10_page.contents.text_layer[i];
-        let element = template_helper.convert_element(layer, 'text', x10_page.location.refwidth);
-        page.elements.push(element);
+    if (x10_page.contents.hasOwnProperty('text_layer')){
+        if(Array.isArray(x10_page.contents.text_layer)){
+            for (let i in x10_page.contents.text_layer) {
+                let layer = x10_page.contents.text_layer[i];
+                let element = template_helper.convert_element(layer, 'text', x10_page.location.refwidth, style_path, template_name);
+                page.elements.push(element);
+            }
+        } else {
+            let layer = x10_page.contents.text_layer;
+            let element = template_helper.convert_element(layer, 'text', x10_page.location.refwidth, style_path, template_name);
+            page.elements.push(element);
+        }
+    }
+
+    if (page.type == 'cover') {
+        let cover = {}
+        cover.bleed = parseInt(x10_page.property.top_bleed)
+        cover.spine = x10_page.contents.hasOwnProperty('spin_layer') ? x10_page.contents.spin_layer.refwidth : 142
+        page.cover = cover
     }
 
     page.elements.sort((a, b) => a.index - b.index);
-
-    // // 重新设置index，index从0开始
-    // for(let i = 0; i < page.elements.length; i++) {
-    //     page.elements[i].index = i
-    // }
 
     // 重新设置index，index从0开始
     for(let i = 0; i < page.elements.length; i++) {
@@ -257,13 +339,34 @@ function convert_page(x10_page, page_type, style_path, template_name) {
     return page;
 }
 
-if (process.argv0.length===2){
-    console.log('请携带id参数')
-} else{
-    let id = parseInt(process.argv[2])
-    if(styles.hasOwnProperty(id)) {
-        main(styles[id].name, styles[id].alias, styles[id].id).catch(err => console.log(err));
-    }else {
-        console.log('解析id不存在')
+// node index.js id op 第一个参数是id，0代表所有，
+// 第二个参数是具体操作，默认只解析模板和布局文件
+// 当为a时，执行所有操作，当为c时拷贝模板的文件到网站工作目录
+if (process.argv.length===2){
+    let msg = '请携带id参数';
+    msg += '\n\tid参数等于0时处理全部模板，大于0时处理指定模板';
+    console.log(msg)
+    return
+}
+
+// 解析的模板id，0为全部
+let id = parseInt(process.argv[2])
+// 操作，默认只解析模板，a为执行所有操作
+let op = process.argv.length > 3 ? process.argv[3] : null
+if (id === 0) {
+    if (op === 'a') {
+        console.log('全部模板不能执行a操作，只能单独对某个模板执行a操作')
+        return
     }
+
+    let ids = Object.keys(styles)
+    ids.forEach(item => {
+        let style = styles[item];
+        main(style.name, style.alias, style.id, op).catch(err => console.log(err))
+    });
+} else if(styles.hasOwnProperty(id)) {
+    let style = styles[id];
+    main(style.name, style.alias, style.id, op).catch(err => console.log(err))
+}else {
+    console.log('解析id不存在')
 }
