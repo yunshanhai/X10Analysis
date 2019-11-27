@@ -12,28 +12,52 @@ const template_image = require('./libs/template-image')
 //如果查询到多个同名模板名称，需要设置index对应的行索引，并且设置multi_row=true;
 //style_name:x10模板的中文名，template_name:转化为我们的模板的文件夹名，id：模板的id
 //使用模板的中文名查询到多条记录，需要将multi_row设置为true再转换，并且设置要转换哪条数据，使用索引index指定
-async function main(style_name, template_name, id, op = null, multi_row = false, index = 0) {
+async function main(style_name, template_name, id, op = null, mine = false, multi_row = false, index = 0) {
     const db = await sqlite.open(config.x10.db);
-    const rows = await db.all(`select a.*,b.* from xc_product_style a 
-        left join xc_product b on a.product_id = b.product_id 
-        where a.style_name=?`, style_name);
-    if (rows.length > 1 && !multi_row) {
-        console.log(`**查询到多条【${style_name}】，请设置要解析那一条，修改代码multi_row和index`);
-        console.log('');
-        console.log('style_id\t模板名称\t\t模板类型');
-        console.log('------------------------------------------------');
-        rows.forEach(item => {
-            console.log(`${item.style_id}\t\t${item.style_name}\t\t${item.category_name}`);
-        });
-        return;
-    }
-    if (rows.length == 0) {
-        console.log(`未查询到【${style_name}】，请确认要解析的模板是否已下载`);
-        return;
-    }
+    let style = null;
 
-    //----------------------------------------------------------------
-    let style = rows[index];
+    if (mine) {
+        // x10个人模板
+        const rows = await db.all(`select * from xc_mine_template_style 
+            where style_name=?`, style_name);
+        
+        if (rows.length > 1 && !multi_row) {
+            console.log(`**查询到多条【${style_name}】，请设置要解析那一条，修改代码multi_row和index`);
+            console.log('');
+            console.log('style_id\t模板名称\t\t模板类型');
+            console.log('------------------------------------------------');
+            rows.forEach(item => {
+                console.log(`${item.style_id}\t\t${item.style_name}\t\t${item.category_name}`);
+            });
+            return;
+        } 
+        if (rows.length == 0) {
+            console.log(`未查询到【${style_name}】，请确认要解析的模板是否已下载`);
+            return;
+        }
+        style = rows[index];
+
+    } else {
+        // x10 官方模板
+        const rows = await db.all(`select a.*,b.* from xc_product_style a 
+            left join xc_product b on a.product_id = b.product_id 
+            where a.style_name=?`, style_name);
+        if (rows.length > 1 && !multi_row) {
+            console.log(`**查询到多条【${style_name}】，请设置要解析那一条，修改代码multi_row和index`);
+            console.log('');
+            console.log('style_id\t模板名称\t\t模板类型');
+            console.log('------------------------------------------------');
+            rows.forEach(item => {
+                console.log(`${item.style_id}\t\t${item.style_name}\t\t${item.category_name}`);
+            });
+            return;
+        }
+        if (rows.length == 0) {
+            console.log(`未查询到【${style_name}】，请确认要解析的模板是否已下载`);
+            return;
+        }
+        style = rows[index];
+    }
 
     let style_dir = config.x10.resource + style.style_path;
     if (!fs.existsSync(style_dir)) {
@@ -41,56 +65,70 @@ async function main(style_name, template_name, id, op = null, multi_row = false,
         return;
     }
 
+    let size_id = await getSizeId(mine ? 0 : parseInt(style.product_id), style.width, style.height, style.compose_type == 2 ? 1 : 0)
     //将模板数据插入tbl_alb_template表
     if (op === 'a') {
-        let size_id = sizes['product_id_' + style.product_id]
         let rows = await mysql_query('select id from tbl_alb_template where id = ? ', id);
-
-        let sql = `insert into tbl_alb_template 
-        (id,size_id,name,version,type,description,thumb_url,path,page_count,photo_count,hot_num,is_top,state,sort)
-        values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
         if(rows.length==0) {
-            let type = [3,4,11].includes(size_id) ? 'calendar' : 'album';
+            let type = style.product_type == 2 ? 'calendar' : 'album';
             let path = config.my.web_root + template_name + '/';
-            let rows = await mysql_query(sql, [id,size_id,style_name,1,type,'','', path, style.page,style.filling_photo_count,0,0,1,id])
+
+            let params = {
+                id: id,
+                size_id,
+                name: style_name,
+                version: 1,
+                type: type,
+                description: '',
+                thumb_url: '', 
+                path: path, 
+                page_count: style.page,
+                photo_count: mine ? 0 : style.filling_photo_count,
+                hot_num: 0,
+                is_top: 0,
+                state: 1,
+                sort: id
+            }
+            add_alb_template(params)
         }
     }
 
-    //创建模板文件夹
+    //模板文件路径
     let template_path = config.my.root + template_name + '/';
 
+    // 处理模板资源相关路径
     if (op === 'a') {
         if (fs.existsSync(template_path)) {
-            console.log('模板文件夹已存在，移除原文件夹：' + template_path);
+            console.log('移除原模板文件夹：' + template_path);
             util.rmdir(template_path);
         }
     
         console.log('创建模板文件夹：' + template_path);
         fs.mkdirSync(template_path);
-
         
         if(fs.existsSync(style_dir + config.x10.layout_folder)){
-            console.log('创建布局文件夹');
-            fs.mkdirSync(template_path + config.my.layout_folder);
-            console.log('拷贝布局文件夹');
+            console.log('拷贝布局文件');
             util.copydirSync(style_dir + config.x10.layout_folder, template_path + config.my.layout_folder);
-        } else {
-            console.log('布局文件夹不存在')
         }
         
-
-        console.log('拷贝背景文件夹');
         if(fs.existsSync(style_dir + config.x10.background_folder)) {
+            console.log('拷贝背景文件');
             util.copydirSync(style_dir + config.x10.background_folder, template_path + config.my.background_folder);
-        }else{
-            console.log('背景文件夹不存在');
         }
 
-        console.log('拷贝装饰文件夹');
         if(fs.existsSync(style_dir + config.x10.decorate_folder)) {
+            console.log('拷贝装饰文件');
             util.copydirSync(style_dir + config.x10.decorate_folder, template_path + config.my.decorate_folder);
-        }else{
-            console.log('装饰文件夹不存在');
+        }
+
+        if(fs.existsSync(style_dir + config.x10.mask_folder)) {
+            console.log('拷贝蒙版文件');
+            util.copydirSync(style_dir + config.x10.mask_folder, template_path + config.my.mask_folder);
+        }
+
+        if(fs.existsSync(style_dir + config.x10.cover_folder)) {
+            console.log('拷贝封面文件');
+            util.copydirSync(style_dir + config.x10.cover_folder, template_path + config.my.cover_folder);
         }
 
         console.log('处理模板缺少的缩略图（背景、装饰）');
@@ -109,7 +147,7 @@ async function main(style_name, template_name, id, op = null, multi_row = false,
         fs.writeFileSync(template_path + config.my.layout_file, JSON.stringify(layouts));
 
         console.log('转化模板文件：' + config.x10.template_file);
-        new_json = await convert_style_json(style_dir + config.x10.template_file, style, template_name);
+        new_json = await convert_style_json(style_dir + config.x10.template_file, style, template_name, size_id);
         fs.writeFileSync(template_path + config.my.template_file, JSON.stringify(new_json));
 
         if (op == null) {
@@ -143,9 +181,65 @@ async function main(style_name, template_name, id, op = null, multi_row = false,
     console.log('解析结束');
 }
 
-async function convert_style_json(file_path, style, template_name) {
+async function getSizeId (product_id, width, height, is_cross) {
+    if (product_id > 0) {
+        return sizes['product_id_' + style.product_id]
+    } else {
+        let sql = `select id from tbl_alb_template_size where width=? and height=? and is_cross=?`
+        let rows = await mysql_query(sql, [width, height, is_cross])
+        // console.log('----------')
+        // console.log(rows[0].id);return;
+        if(rows.length > 0) {
+            return rows[0].id
+        } else {
+            rows = await mysql_query('select max(id) as id from tbl_alb_template_size');
+            let new_id = rows[0].id + 1;
+            sql = `insert into tbl_alb_template_size
+            (id,name,description,width,height,is_cross,state,sort) 
+            values(?,?,?,?,?,?,?,?)`;
+            let name = '个人 ' + (is_cross == 1 ? '跨页 ' : '不跨页 ') + util.px2mm(width, 300).toFixed() + '*' + util.px2mm(height, 300).toFixed()
+            rows = await mysql_query(sql, [
+                new_id,
+                name,
+                name,
+                width,
+                height,
+                is_cross,
+                1,
+                new_id
+            ])
+            return new_id
+        }
+    }
+    
+}
+
+async function add_alb_template (params) {
+    let sql = `insert into tbl_alb_template 
+        (id,size_id,name,version,type,description,thumb_url,path,page_count,photo_count,hot_num,is_top,state,sort)
+        values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+    let rows = await mysql_query(sql, [
+        params.id,
+        params.size_id,
+        params.name,
+        params.version,
+        params.type,
+        params.description,
+        params.thumb_url, 
+        params.path, 
+        params.page_count,
+        params.photo_count,
+        params.hot_num,
+        params.is_top,
+        params.state,
+        params.sort
+    ])
+    return rows
+}
+
+async function convert_style_json(file_path, style, template_name, size_id) {
     let json = JSON.parse(fs.readFileSync(file_path).toString());
-    let new_json = template_helper.create_empty_book(style.style_name, sizes['product_id_' + style.product_id])
+    let new_json = template_helper.create_empty_book(style.style_name, size_id)
 
     //----------------------------------------規格---------------------------------------
     console.log('解析模板文件的规格');
@@ -292,7 +386,6 @@ function convert_page(x10_page, page_type, style_path, template_name) {
         page.elements.push(element);
     }
     
-
     //照片
     if(Array.isArray(x10_page.contents.photo_layer)){
         for (let i in x10_page.contents.photo_layer) {
@@ -362,11 +455,11 @@ if (id === 0) {
     let ids = Object.keys(styles)
     ids.forEach(item => {
         let style = styles[item];
-        main(style.name, style.alias, style.id, op).catch(err => console.log(err))
+        main(style.name, style.alias, style.id, op, style.mine).catch(err => console.log(err))
     });
 } else if(styles.hasOwnProperty(id)) {
     let style = styles[id];
-    main(style.name, style.alias, style.id, op).catch(err => console.log(err))
+    main(style.name, style.alias, style.id, op, style.mine).catch(err => console.log(err))
 }else {
     console.log('解析id不存在')
 }

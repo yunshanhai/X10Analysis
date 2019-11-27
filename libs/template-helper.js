@@ -37,13 +37,6 @@ exports.create_empty_page = () => {
 }
 
 exports.convert_element = (layer, type, refwidth, style_path, template_name) => {
-    if (!layer.hasOwnProperty('location')){
-        console.log('111111111111111111111')
-        console.log(layer)
-    }
-    // if (!layer.location.hasOwnProperty('wscale')){
-    //     console.log(layer)
-    // }
     let width_px = refwidth * layer.location.wscale;
     let element = {
         x: Math.round(refwidth * layer.location.xscale),
@@ -85,16 +78,43 @@ exports.convert_element = (layer, type, refwidth, style_path, template_name) => 
             angle: 0,
             scale: 1,
             translate_x: -1,
-            translate_y: -1
+            translate_y: -1,
+            frame: null // 蒙版
         };
+        if (layer.photo.hasOwnProperty('frame')) {
+            element.image.frame = {}
+
+            let mask_url = layer.photo.frame.property.url
+            if (mask_url.indexOf('globalres') > -1) {
+                // 公共边框
+                let oldStr = 'com://globalres/frame'
+                let newStr = config.my.global + config.my.mask_folder
+                element.image.frame.url = mask_url.replace(/\\/g, '/').replace(/\/\/\//g, '//').replace(oldStr, newStr)
+                element.image.frame.stretch = layer.photo.frame.property.hasOwnProperty('isStretch') && layer.photo.frame.property.isStretch ? true : false
+            } else {
+                // 模板边框
+                let oldStr = 'com://' + style_path + config.x10.mask_folder;
+                let newStr = config.my.web_root + template_name + '/' + config.my.mask_folder
+                element.image.frame.url = mask_url.replace(/\\/g, '/').replace(/\/\/\//g, '//').replace(oldStr, newStr)
+                element.image.frame.stretch = layer.photo.frame.property.hasOwnProperty('isStretch') && layer.photo.frame.property.isStretch ? true : false
+            }
+        }
+
     } else if (type === 'decorate') {
         // com://photobook2/magazine_of_personality/tuantiyixin/decorate/14.png
-        let oldStr = 'com://' + style_path + config.x10.decorate_folder;
-        let newStr = config.my.web_root + template_name + '/' + config.my.decorate_folder
-        element.image = {
-            url: null
+        element.image = {}
+        if (layer.image.property.url.indexOf('globalres') > -1) {
+            // 公共装饰
+            let oldStr = 'com://globalres/decorate'
+            let newStr = config.my.global + config.my.decorate_folder
+            element.image.url = layer.image.property.url.replace(/\\/g, '/').replace(/\/\/\//g, '//').replace(oldStr, newStr)
+        } else {
+            // 模板装饰
+            let oldStr = 'com://' + style_path + config.x10.decorate_folder;
+            let newStr = config.my.web_root + template_name + '/' + config.my.decorate_folder
+            element.image.url = layer.image.property.url.replace(/\\/g, '/').replace(/\/\/\//g, '//').replace(oldStr, newStr)
         }
-        element.image.url = layer.image.property.url.replace(/\\/g, '/').replace(/\/\/\//g, '//').replace(oldStr, newStr)
+
     } else if (type == 'text') {
         element.text = {
             content: layer.property.content,
